@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>EasyCare</title>
+<link href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#EEF3F7;--card:#fff;--ink:#12263A;--sub:#44586B;--main:#0B6E6E;--mainx:#fff;--ok:#1B7F3B;--warn:#9A3F00;--line:#B8C7D4;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0E1A26;--card:#18293A;--ink:#F2F6FA;--sub:#B4C4D3;--main:#5CD0C8;--mainx:#06222A;--ok:#6EDC8C;--warn:#FFB066;--line:#3B5166}}
+:root[data-theme="dark"]{--bg:#0E1A26;--card:#18293A;--ink:#F2F6FA;--sub:#B4C4D3;--main:#5CD0C8;--mainx:#06222A;--ok:#6EDC8C;--warn:#FFB066;--line:#3B5166}
+*{box-sizing:border-box}
+html{font-size:20px}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:'Atkinson Hyperlegible',Verdana,sans-serif;line-height:1.4;min-height:100vh}
+main{max-width:600px;margin:0 auto;padding:16px}
+h1{font-size:1.7rem;margin:8px 0 16px}
+h2{font-size:1.2rem;margin:20px 0 8px}
+p{margin:6px 0}.sub{color:var(--sub)}
+button,input,select,textarea{font:inherit;color:inherit}
+.btn{display:block;width:100%;min-height:64px;padding:14px 18px;margin:10px 0;border:3px solid var(--main);border-radius:16px;background:var(--main);color:var(--mainx);font-weight:700;font-size:1.15rem;text-align:center;text-decoration:none;cursor:pointer}
+.btn.alt{background:var(--card);color:var(--ink);border-color:var(--line)}
+.btn.ok{background:var(--ok);border-color:var(--ok);color:var(--bg)}
+.btn.sm{min-height:48px;font-size:1rem;display:inline-block;width:auto;margin:4px 6px 4px 0}
+:focus-visible{outline:4px solid var(--warn);outline-offset:3px}
+.tiles{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.tile{min-height:130px;border-radius:18px;border:3px solid var(--line);background:var(--card);font-weight:700;font-size:1.15rem;padding:12px;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px}
+.tile .i{font-size:2.2rem}
+.card{background:var(--card);border:2px solid var(--line);border-radius:16px;padding:14px;margin:10px 0}
+.done{border-color:var(--ok)}
+.card b{font-size:1.15rem}
+label{display:block;font-weight:700;margin-top:12px}
+input,select,textarea{width:100%;min-height:56px;padding:10px 12px;border:3px solid var(--line);border-radius:12px;background:var(--card)}
+.top{display:flex;gap:8px;align-items:center;justify-content:space-between}
+.top .btn{margin:0;width:auto;min-width:110px}
+.alarm{position:fixed;inset:0;background:var(--warn);color:#fff;z-index:9;display:flex;flex-direction:column;justify-content:center;padding:24px;text-align:center}
+.alarm h1{font-size:2.2rem}.alarm .btn{background:#fff;color:#000;border-color:#fff}
+.calc{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.calc button{min-height:70px;font-size:1.5rem;font-weight:700;border:3px solid var(--line);border-radius:14px;background:var(--card);cursor:pointer}
+.calc .op{background:var(--main);color:var(--mainx);border-color:var(--main)}
+.disp{background:var(--card);border:3px solid var(--line);border-radius:14px;padding:12px;text-align:right;font-size:2.4rem;font-weight:700;margin-bottom:10px;overflow-x:auto}
+.note{font-size:.85rem;color:var(--sub);margin-top:24px}
+</style></head><body><main id="app"></main>
+<script>
+const KEY='easycare.v1';
+let S={meds:[],taken:{},checkins:[],appts:[],fam:{name:'',phone:''},size:20};
+try{const r=localStorage.getItem(KEY);if(r)S=Object.assign(S,JSON.parse(r))}catch(e){}
+const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}};
+const $=s=>document.querySelector(s),app=$('#app');
+const today=()=>new Date().toISOString().slice(0,10);
+const esc=t=>String(t).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+let view='home',ringing=null,calc={d:'0',a:null,op:null,fresh:true};
+function go(v){view=v;render();window.scrollTo(0,0)}
+function sms(msg){return S.fam.phone?`sms:${S.fam.phone}?&body=${encodeURIComponent(msg)}`:'#'}
+function famBtn(msg,label){return S.fam.phone?`<a class="btn alt" href="${sms(msg)}">${label||'Tell '+esc(S.fam.name||'family')}</a>`:`<button class="btn alt" onclick="go('settings')">Add a family contact to send updates</button>`}
+function header(t){return `<div class="top"><h1>${t}</h1>${view!=='home'?'<button class="btn alt" onclick="go(\'home\')">Home</button>':''}</div>`}
+function render(){
+document.documentElement.style.fontSize=S.size+'px';
+const v={home,meds,checkin,appts,calcv,settings}[view];app.innerHTML=v()+alarmHtml();if(view==='calc')showCalc()}
+function home(){const n=S.meds.filter(m=>!(S.taken[today()]||{})[m.id]).length;
+return `<h1>Hello 👋</h1><p class="sub">${n?n+' medicine'+(n>1?'s':'')+' left today':'All medicines done today'}</p>
+<div class="tiles"><button class="tile" onclick="go('meds')"><span class="i">💊</span>Medicines</button>
+<button class="tile" onclick="go('checkin')"><span class="i">✅</span>I'm okay</button>
+<button class="tile" onclick="go('appts')"><span class="i">📅</span>Appointments</button>
+<button class="tile" onclick="go('calc')"><span class="i">🔢</span>Big calculator</button></div>
+<div style="margin-top:14px;display:flex;gap:8px"><button class="btn alt sm" onclick="sz(-2)">Smaller text</button><button class="btn alt sm" onclick="sz(2)">Bigger text</button><button class="btn alt sm" onclick="go('settings')">Family</button></div>
+<p class="note">Reminders sound while this app is open. Family updates open your text messages for you to send.</p>`}
+function sz(d){S.size=Math.min(30,Math.max(16,S.size+d));save();render()}
+/* Medicines */
+function meds(){const t=S.taken[today()]||{};
+const list=[...S.meds].sort((a,b)=>a.time.localeCompare(b.time)).map(m=>{const d=t[m.id];
+return `<div class="card ${d?'done':''}"><b>${esc(m.name)}</b><p>${esc(m.dose||'')} at ${fmt(m.time)}</p>
+${d?`<p><b style="color:var(--ok)">✔ Taken at ${d}</b></p>${famBtn(`I took my ${m.name} at ${d}.`,'Tell '+esc(S.fam.name||'family')+' it was taken')}`:`<button class="btn ok" onclick="take('${m.id}')">I took it</button>`}
+<button class="btn alt sm" onclick="delMed('${m.id}')">Remove</button></div>`}).join('')||'<p class="sub">No medicines yet. Add your first one below.</p>';
+return header('Medicines')+list+`<h2>Add a medicine</h2><label>Name<input id="mn" placeholder="e.g. Blood pressure pill"></label><label>Dose (optional)<input id="md" placeholder="e.g. 1 tablet"></label><label>Time<input id="mt" type="time" value="08:00"></label><button class="btn" onclick="addMed()">Save medicine</button>`}
+function fmt(t){const[h,m]=t.split(':').map(Number);return `${h%12||12}:${String(m).padStart(2,'0')} ${h<12?'AM':'PM'}`}
+function addMed(){const n=$('#mn').value.trim();if(!n){$('#mn').focus();return}
+S.meds.push({id:'m'+Date.now(),name:n,dose:$('#md').value.trim(),time:$('#mt').value||'08:00'});save();render()}
+function delMed(id){if(confirm('Remove this medicine?')){S.meds=S.meds.filter(m=>m.id!==id);save();render()}}
+function take(id){const n=new Date();(S.taken[today()]=S.taken[today()]||{})[id]=n.toLocaleTimeString([],{hour:'numeric',minute:'2-digit'});
+ringing=null;save();render()}
+/* Alarm */
+let audio;function beep(){try{audio=audio||new(window.AudioContext||window.webkitAudioContext)();const o=audio.createOscillator(),g=audio.createGain();o.frequency.value=880;g.gain.value=.4;o.connect(g);g.connect(audio.destination);o.start();o.stop(audio.currentTime+.4)}catch(e){}}
+function alarmHtml(){if(!ringing)return'';const m=S.meds.find(x=>x.id===ringing);if(!m)return'';
+return `<div class="alarm" role="alertdialog"><h1>Time for your medicine</h1><p style="font-size:1.5rem"><b>${esc(m.name)}</b><br>${esc(m.dose||'')}</p><button class="btn" onclick="take('${m.id}')">I took it</button><button class="btn" onclick="ringing=null;render()">Remind me later</button></div>`}
+let snooze={};setInterval(()=>{const n=new Date(),hm=String(n.getHours()).padStart(2,'0')+':'+String(n.getMinutes()).padStart(2,'0');
+if(ringing){beep();return}
+for(const m of S.meds){if(m.time<=hm&&!(S.taken[today()]||{})[m.id]&&m.time===hm&&snooze[m.id]!==hm+today()){snooze[m.id]=hm+today();ringing=m.id;render();beep();if(navigator.vibrate)navigator.vibrate([400,200,400]);break}}},3000);
+/* Check-in */
+function checkin(){const d=S.checkins.includes(today());let st=0,c=new Date();while(S.checkins.includes(c.toISOString().slice(0,10))){st++;c.setDate(c.getDate()-1)}
+return header("I'm okay")+`<div class="card ${d?'done':''}"><p style="font-size:1.3rem"><b>${d?'✔ Checked in today':'Tap once each morning'}</b></p><p class="sub">${st?st+' day'+(st>1?'s':'')+' in a row':'Let your family know you are well.'}</p></div>
+${d?'':`<button class="btn ok" style="min-height:110px;font-size:1.5rem" onclick="chk()">I'm okay today</button>`}${d?famBtn("Good morning! I'm okay today.","Tell "+esc(S.fam.name||'family')+" I'm okay"):''}`}
+function chk(){S.checkins.push(today());save();render()}
+/* Appointments */
+function appts(){const l=[...S.appts].sort((a,b)=>a.when.localeCompare(b.when)).map(a=>`<div class="card"><b>${esc(a.title)}</b><p>${new Date(a.when).toLocaleString([],{weekday:'long',month:'long',day:'numeric',hour:'numeric',minute:'2-digit'})}</p>${a.notes?`<p class="sub">${esc(a.notes)}</p>`:''}<button class="btn alt sm" onclick="delAp('${a.id}')">Remove</button></div>`).join('')||'<p class="sub">No appointments yet.</p>';
+return header('Appointments')+l+`<h2>Add an appointment</h2><label>What is it?<input id="at" placeholder="e.g. Dr. Lee"></label><label>When<input id="aw" type="datetime-local"></label><label>Questions to ask<textarea id="an" rows="3"></textarea></label><button class="btn" onclick="addAp()">Save appointment</button>`}
+function addAp(){const t=$('#at').value.trim(),w=$('#aw').value;if(!t||!w){(t?$('#aw'):$('#at')).focus();return}S.appts.push({id:'a'+Date.now(),title:t,when:w,notes:$('#an').value.trim()});save();render()}
+function delAp(id){if(confirm('Remove this appointment?')){S.appts=S.appts.filter(a=>a.id!==id);save();render()}}
+/* Calculator */
+function calcv(){return header('Big calculator')+`<div class="disp" id="disp">0</div><div class="calc">${['7','8','9','÷','4','5','6','×','1','2','3','−','C','0','.','+'].map(k=>`<button class="${'÷×−+'.includes(k)?'op':''}" onclick="key('${k}')">${k}</button>`).join('')}<button class="op" style="grid-column:1/5" onclick="key('=')">=</button></div>`}
+function showCalc(){$('#disp').textContent=calc.d}
+function key(k){const f={'+':(a,b)=>a+b,'−':(a,b)=>a-b,'×':(a,b)=>a*b,'÷':(a,b)=>b?a/b:NaN};
+if(/\d|\./.test(k)){calc.d=calc.fresh?(k==='.'?'0.':k):(k==='.'&&calc.d.includes('.')?calc.d:calc.d+k);calc.fresh=false}
+else if(k==='C'){calc={d:'0',a:null,op:null,fresh:true}}
+else{const cur=parseFloat(calc.d);if(calc.op&&!calc.fresh){calc.a=f[calc.op](calc.a,cur);calc.d=isNaN(calc.a)?'Error':String(+calc.a.toFixed(8))}else if(!calc.op)calc.a=cur;
+calc.op=k==='='?null:k;calc.fresh=true}showCalc()}
+/* Settings */
+function settings(){return header('Family contact')+`<p class="sub">Who should get your updates?</p><label>Name<input id="fn" value="${esc(S.fam.name)}" placeholder="e.g. Sarah"></label><label>Phone number<input id="fp" type="tel" value="${esc(S.fam.phone)}" placeholder="e.g. 555 123 4567"></label><button class="btn" onclick="S.fam={name:$('#fn').value.trim(),phone:$('#fp').value.trim()};save();go('home')">Save</button>`}
+render();
+</script></body></html>
